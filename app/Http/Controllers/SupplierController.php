@@ -24,18 +24,40 @@ class SupplierController extends Controller
 
         $suppliers = $query->paginate($request->get('per_page', 15));
         
-        // Ajouter la catégorie au format de réponse
+        // Ajouter la catégorie et s'assurer que toutes les colonnes sont présentes
         $suppliers->getCollection()->transform(function ($supplier) {
+            // S'assurer que toutes les colonnes sont présentes avec des valeurs par défaut
+            $supplierData = [
+                'id' => $supplier->id,
+                'name' => $supplier->name ?? '',
+                'email' => $supplier->email ?? '',
+                'phone' => $supplier->phone ?? '',
+                'product' => $supplier->product ?? '',
+                'category_id' => $supplier->category_id ?? null,
+                'return_policy' => $supplier->return_policy ?? 'not_taking_return',
+                'on_the_way' => $supplier->on_the_way ?? 0,
+                'image' => $supplier->image ?? null,
+            ];
+            
             // Priorité 1: Catégorie directe du fournisseur (via category_id)
             if ($supplier->category) {
-                $supplier->category_name = $supplier->category->name;
-                $supplier->category_id = $supplier->category->id;
+                $supplierData['category_name'] = $supplier->category->name;
+                $supplierData['category_id'] = $supplier->category->id;
+                $supplierData['category'] = [
+                    'id' => $supplier->category->id,
+                    'name' => $supplier->category->name
+                ];
             }
             // Priorité 2: Catégorie depuis le premier produit associé
             else if ($supplier->products && $supplier->products->count() > 0) {
                 $firstProduct = $supplier->products->first();
                 if ($firstProduct->category) {
-                    $supplier->category_name = $firstProduct->category->name;
+                    $supplierData['category_name'] = $firstProduct->category->name;
+                    $supplierData['category_id'] = $firstProduct->category->id;
+                    $supplierData['category'] = [
+                        'id' => $firstProduct->category->id,
+                        'name' => $firstProduct->category->name
+                    ];
                 }
             }
             // Priorité 3: Chercher dans tous les produits
@@ -45,11 +67,35 @@ class SupplierController extends Controller
                     ->first();
                 
                 if ($product && $product->category) {
-                    $supplier->category_name = $product->category->name;
+                    $supplierData['category_name'] = $product->category->name;
+                    $supplierData['category_id'] = $product->category->id;
+                    $supplierData['category'] = [
+                        'id' => $product->category->id,
+                        'name' => $product->category->name
+                    ];
                 } else {
-                    $supplier->category_name = null;
+                    $supplierData['category_name'] = null;
+                    $supplierData['category'] = null;
                 }
             }
+            
+            // Ajouter les produits associés
+            $supplierData['products'] = $supplier->products ? $supplier->products->map(function($product) {
+                return [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'category' => $product->category ? [
+                        'id' => $product->category->id,
+                        'name' => $product->category->name
+                    ] : null
+                ];
+            })->toArray() : [];
+            
+            // Mettre à jour le supplier avec toutes les données
+            foreach ($supplierData as $key => $value) {
+                $supplier->$key = $value;
+            }
+            
             return $supplier;
         });
         
